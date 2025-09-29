@@ -5,8 +5,11 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./components/Login";
 import TeacherApp from "./pages/TeacherApp";
 import StudentApp from "./pages/StudentApp";
-import AddExam from "./Exams/AddExams";
+import AddExam from "./pages/AddExams";
 import SingleExam from "./pages/SingleExam";
+import ResultPage from "./pages/ResultPage";
+import MonitorExam from "./pages/MonitorExam";
+import Dashboard from "./pages/Dashboard";
 
 
 function App() {
@@ -34,6 +37,23 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/* Teacher Monitor exam */}
+        <Route
+          path="/monitorExam/:examId"
+          element={
+            <ProtectedRoute allowedRoles={["TEACHER"]}>
+              <MonitorExam />
+            </ProtectedRoute>
+          }
+        />
+        <Route 
+           path="/teacher/dashboard"
+           element={
+            <ProtectedRoute allowedRoles={["TEACHER"]}>
+              <Dashboard/>
+            </ProtectedRoute>
+           }
+           />
 
 
 
@@ -47,10 +67,39 @@ function App() {
           }
         />
         <Route
+          path="/results"
+          element={
+
+            <ResultPage />
+
+          }
+        />
+        <Route
+          path="/results/:studentExamId"
+          element={
+            <ResultPage />} />
+
+        {/* <Route
           path="/singleExam"
           element={
             <ProtectedRoute allowedRoles={["STUDENT"]}>
               <SingleExam />
+            </ProtectedRoute>
+          }
+        /> */}
+        <Route
+          path="/singleExam/:examId"
+          element={
+            <ProtectedRoute allowedRoles={["STUDENT"]}>
+              <SingleExam />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/addExam/:examId"
+          element={
+            <ProtectedRoute allowedRoles={["TEACHER"]}>
+              <AddExam />
             </ProtectedRoute>
           }
         />

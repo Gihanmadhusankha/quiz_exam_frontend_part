@@ -1,181 +1,285 @@
 import React, { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { loadSingleExam, finishExam, submitExam } from "../api/studentExams";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { listStudentExams, loadSingleExam, submitExam, finishExam } from "../api/studentExams";
+import Header from "../Layout/Header";
 
 function SingleExam() {
   const location = useLocation();
   const navigate = useNavigate();
+  const token = localStorage.getItem("token");
+  const { examId, questionIndex } = useParams();
 
-  // exam object comes from StudentApp -> navigate
-  const exam = location.state?.exam;
+   const passedExam = location.state?.exam;
 
   const [examData, setExamData] = useState(null);
   const [questions, setQuestions] = useState([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(
+    questionIndex ? parseInt(questionIndex, 10) : 0
+  );
   const [selectedAnswers, setSelectedAnswers] = useState({});
   const [timeLeft, setTimeLeft] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const token = localStorage.getItem("token"); // JWT token
+  // Format timer
+  const formatTime = (totalSeconds) => {
+    const pad = (n) => String(n).padStart(2, "0");
+    if (totalSeconds <= 0) return "00:00";
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    return hrs > 0 ? `${hrs}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)} min`;
+  };
 
-  // Load exam when component mounts
+  // Fetch exam data
   useEffect(() => {
-    if (!exam?.id) {
-      setError("No exam selected. Redirecting...");
-      setTimeout(() => navigate("/student"), 3000);
-      return;
-    }
+    const fetchExamData = async () => {
+      if (!token) {
+        navigate("/login");
+        return;
+      }
 
-    async function fetchExam() {
+      setLoading(true);
+
       try {
-        const data = await loadSingleExam({ examId: exam.id }, token);
-        console.log("SingleExam loaded:", data);
+        let examToLoad = passedExam || { examId};
 
+        if (!examToLoad?.examId && examId) {
+        
+          examToLoad = { examId };
+        }
+
+        if (!examToLoad?.examId) {
+          const res = await listStudentExams({ page: 0, size: 1 }, token);
+          examToLoad = res?.content?.[0];
+          if (!examToLoad?.examId) throw new Error("No exams available");
+        }
+
+        const data = await loadSingleExam({ examId: examToLoad.examId }, token);
         setExamData(data);
         setQuestions(data.questions || []);
 
-        // set timer from backend endTime
+        // Pre-fill previous answers
+        const prevAnswers = {};
+        (data.answers || []).forEach((a) => {
+          prevAnswers[a.questionId] = a.selectedOption;
+        });
+        setSelectedAnswers(prev => ({ ...prev, ...prevAnswers }));
+
+        let targetIndex = 0;
+
+        const lastId = data.lastAnsweredQuestionId;
+
+        if (lastId) {
+          // Find index of the last answered question
+          const lastIndex = data.questions.findIndex(q => q.id === lastId);
+          targetIndex = lastIndex !== -1
+            ? Math.min(lastIndex + 1, data.questions.length - 1)
+            : 0;
+        }
+
+        setCurrentQuestionIndex(targetIndex);
+
+        // Calculate timeLeft
         const now = new Date();
-        const examEnd = new Date(data.endTime);
-        setTimeLeft(Math.max(0, Math.floor((examEnd - now) / 1000)));
+        const endTime = new Date(data.endTime);
+        setTimeLeft(Math.max(0, Math.floor((endTime - now) / 1000)));
+
       } catch (err) {
         console.error(err);
-        setError(err.response?.data?.message || "Failed to load exam");
+        setError(err.response?.data?.message || err.message || "Failed to load exam");
       } finally {
         setLoading(false);
       }
-    }
+    };
 
-    fetchExam();
-  }, [exam, navigate, token]);
+    fetchExamData();
+  }, [token, navigate, examId, questionIndex]);
 
-  // Timer countdown
-  useEffect(() => {
-    if (timeLeft <= 0) return;
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [timeLeft]);
+  // Countdown timer
+ useEffect(() => {
+  if (!examData) return;
 
-  // Format timer
-  const formatTime = (seconds) => {
-    const min = Math.floor(seconds / 60).toString().padStart(2, "0");
-    const sec = (seconds % 60).toString().padStart(2, "0");
-    return `${min}:${sec}`;
+  const timer = setInterval(() => {
+    setTimeLeft(prev => {
+      if (prev <= 1) {
+        clearInterval(timer);
+        alert("Time is over!....Auto submit the answers");
+        navigate("/results", { state: { studentExamId: examData.studentExamId } });
+        return 0;
+      }
+      return prev - 1;
+    });
+  }, 1000);
+
+  return () => clearInterval(timer);
+}, [examData, navigate]);
+
+
+  const handleAnswerChange = (questionId, optionKey) => {
+    setSelectedAnswers({ ...selectedAnswers, [questionId]: optionKey });
   };
 
-  // Answer change
-  const handleAnswerChange = async (questionId, optionKey) => {
-    const newAnswers = { ...selectedAnswers, [questionId]: optionKey };
-    setSelectedAnswers(newAnswers);
+  const handleNext = async () => {
+    const currentQuestion = questions[currentQuestionIndex];
+    const selectedOption = selectedAnswers[currentQuestion.id];
+    try {
+      if (selectedOption) {
+        await submitExam({ examId: examData.examId, questionId: currentQuestion.id, selectedOption }, token);
+      }
+
+      const nextIndex = Math.min(currentQuestionIndex + 1, questions.length - 1);
+      setCurrentQuestionIndex(nextIndex);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to submit answer. Try again.");
+    }
+  };
+
+  const handlePrev = async () => {
+
+    const currentQuestion = questions[currentQuestionIndex];
+    const selectedOption = selectedAnswers[currentQuestion.id];
+    try {
+      if (selectedOption) {
+        await submitExam({ examId: examData.examId, questionId: currentQuestion.id, selectedOption }, token);
+      }
+
+      const prevIndex = Math.max(currentQuestionIndex - 1, 0);
+      setCurrentQuestionIndex(prevIndex);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to submit answer. Try again.");
+    }
+  };
+
+  const handleSave = async () => {
+    const currentQuestion = questions[currentQuestionIndex];
+    const selectedOption = selectedAnswers[currentQuestion.id];
 
     try {
-      await submitExam(
-        { examId: exam.id, questionId, selectedOption: optionKey },
-        token
-      );
+      if (selectedOption) {
+        await submitExam({ examId: examData.examId, questionId: currentQuestion.id, selectedOption }, token);
+      }
+    
+
+      alert("Exam saved as pending. Redirecting to exam list.");
+      navigate("/student");
     } catch (err) {
-      console.error("Submit error:", err);
+      console.error(err);
+      setError(err.response?.data?.message || "Failed to save exam");
     }
   };
 
-  // Complete exam
   const handleComplete = async () => {
+     const allAnswered = questions.every(q => selectedAnswers[q.id]);
+  if (!allAnswered) {
+    alert("You must answer all questions before completing the exam.");
+    return;
+  }
+
+    const currentQuestion = questions[currentQuestionIndex];
+    const selectedOption = selectedAnswers[currentQuestion.id];
+
     try {
-      await finishExam({ examId: exam.id }, token);
-      navigate("/student"); // go back to student dashboard
-    } catch (err) {
+      if (selectedOption) {
+        await submitExam({ examId: examData.examId, questionId: currentQuestion.id, selectedOption }, token);
+        await finishExam({ examId: examData.examId }, token);
+        alert("Exam completed! Redirecting to results.");
+        navigate("/results", { state: { studentExamId: examData.studentExamId } });
+      }
+
+
+
+
+} catch (err) {
+      console.error(err);
       setError(err.response?.data?.message || "Failed to complete exam");
     }
   };
 
   if (loading) return <div className="p-4 text-center">Loading exam...</div>;
-  if (error)
-    return <div className="p-4 text-center text-red-600">{error}</div>;
-  if (!examData) return null;
+  if (error) return <div className="p-4 text-center text-red-600">{error}</div>;
+  if (!examData || !questions.length) return <div className="p-4 text-center text-red-600">No exam or questions available.</div>;
 
   const currentQuestion = questions[currentQuestionIndex];
   const options = [
-    { key: "optionA", value: currentQuestion?.optionA },
-    { key: "optionB", value: currentQuestion?.optionB },
-    { key: "optionC", value: currentQuestion?.optionC },
-    { key: "optionD", value: currentQuestion?.optionD },
-  ];
+    { key: "A", value: currentQuestion.optionA },
+    { key: "B", value: currentQuestion.optionB },
+    { key: "C", value: currentQuestion.optionC },
+    { key: "D", value: currentQuestion.optionD },
+  ].filter((opt) => opt.value);
+
+  const allQuestionsAnswered = questions.every((q) => selectedAnswers[q.id]);
+  const isExamCompleted = examData?.status === "ATTENDED";
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <div className="max-w-4xl mx-auto mt-8 p-6 bg-white rounded-lg shadow-md">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6 border-b pb-2">
-          <h1 className="text-xl font-bold">{examData.title}</h1>
-          <span className="text-gray-700">
-            Time Left: {formatTime(timeLeft)}
-          </span>
+      <Header />
+      <div className="flex items-center justify-between px-6 py-3 relative">
+        <h1 className="text-lg font-semibold absolute left-50">{examData.title}</h1>
+        <div className="mx-auto text-gray-700 font-medium">Time Left: {formatTime(timeLeft)}</div>
+      </div>
+
+      <div className="max-w-2xl mx-auto mt-10 p-6 bg-white rounded shadow">
+        <div className="mb-4">
+          <p className="font-medium">Q. {currentQuestion.questionText}</p>
         </div>
 
-        {/* Question */}
-        <div className="mb-6">
-          <p className="font-bold mb-2">
-            Q. {currentQuestion?.questionText}
-          </p>
+        <div className="border-2 border-gray-300 p-4 mb-6">
+          {options.map((opt, index) => (
+            <label key={index} className="flex items-center mb-2 cursor-pointer">
+              <input
+                type="radio"
+                name={`question-${currentQuestion.id}`}
+                checked={selectedAnswers[currentQuestion.id] === opt.key}
+                onChange={() => handleAnswerChange(currentQuestion.id, opt.key)}
+                className="mr-2"
+                disabled={isExamCompleted}
+              />
+              {opt.value}
+            </label>
+          ))}
         </div>
 
-        {/* Options */}
-        <div className="space-y-2 mb-6">
-          {options.map(
-            (opt, index) =>
-              opt.value && (
-                <label key={index} className="flex items-center">
-                  <input
-                    type="radio"
-                    name={`question-${currentQuestion.id}`}
-                    checked={selectedAnswers[currentQuestion.id] === opt.key}
-                    onChange={() =>
-                      handleAnswerChange(currentQuestion.id, opt.key)
-                    }
-                    className="mr-2"
-                  />
-                  {opt.value}
-                </label>
-              )
-          )}
-        </div>
-
-        {/* Navigation */}
-        <div className="flex justify-between mb-8">
+        <div className="flex justify-between items-center mb-8">
           <button
-            onClick={() => setCurrentQuestionIndex((prev) => prev - 1)}
+            onClick={handlePrev}
             disabled={currentQuestionIndex === 0}
             className="px-4 py-2 bg-gray-300 text-gray-700 rounded disabled:bg-gray-200"
           >
             Prev
           </button>
-          <span>
-            Question {currentQuestionIndex + 1} / {questions.length}
-          </span>
+          <span>Question {currentQuestionIndex + 1} / {questions.length}</span>
           <button
-            onClick={() => setCurrentQuestionIndex((prev) => prev + 1)}
-            disabled={currentQuestionIndex === questions.length - 1}
+            onClick={handleNext}
+            disabled={isExamCompleted || currentQuestionIndex >= questions.length}
             className="px-4 py-2 bg-gray-300 text-gray-700 rounded disabled:bg-gray-200"
           >
             Next
           </button>
         </div>
+      </div>
 
-        {/* Complete Button */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleComplete}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            Complete
-          </button>
-        </div>
+      <div className="flex justify-end gap-5 max-w-2xl mx-auto px-6 py-5">
+        <button
+          onClick={handleSave}
+          disabled={allQuestionsAnswered}
+          className="px-5 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-green-300"
+        >
+          Save
+        </button>
+        <button
+          onClick={handleComplete}
+          disabled={isExamCompleted}
+          className="px-5 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-blue-300"
+        >
+          Complete
+        </button>
       </div>
     </div>
   );
 }
 
 export default SingleExam;
+

@@ -1,15 +1,14 @@
-import api from "./apiClient"; 
+import api from "./apiClient";
 
-import api from "./api"; // your axios instance or base api
-
+// Start/load a single exam
 export async function loadSingleExam({ examId }, token) {
   try {
     const res = await api.post(
-      "/student-exams/start",   // backend endpoint
-      { examId },               // matches StartExamRequest
+      "/student-exams/start",
+      { examId }, // payload
       {
         headers: {
-          Authorization: `Bearer ${token}`, // send JWT token
+          Authorization: `Bearer ${token}`,
         },
       }
     );
@@ -21,27 +20,67 @@ export async function loadSingleExam({ examId }, token) {
   }
 }
 
-
-// submit the answers
-export async function submitExam(req){
-    const res = await api.post("/student-exams/submit", req);
+// Submit the answers
+export async function submitExam(req, token) {
+  try {
+    const res = await api.post("/student-exams/submit", req, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
     return res?.data?.data ?? res?.data;
+  } catch (error) {
+    console.error("submitExam error:", error.response?.data || error.message);
+    throw error;
+  }
 }
 
-// finish the exam
-export async function finishExam(req){
-    const res = await api.post("/student-exams/finish", req);
+// Finish the exam
+export async function finishExam(req, token) {
+  try {
+    const res = await api.post("/student-exams/finish", req, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
     return res?.data?.data ?? res?.data;
+  } catch (error) {
+    console.error("finishExam error:", error.response?.data || error.message);
+    throw error;
+  }
 }
 
-// List student exams (for students)
-export const listStudentExams = async (studentExamList) => {
-  const res = await api.post("/student-exams/lists", studentExamList);
-  return res?.data?.data ?? res?.data;
+// List student exams
+export const listStudentExams = async (studentExamList, token) => {
+  try {
+    const res = await api.post("/student-exams/lists", studentExamList, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return res?.data?.data ?? res?.data;
+  } catch (error) {
+    console.error("listStudentExams error:", error.response?.data || error.message);
+    throw error;
+  }
 };
 
 // Get student results
-export async function getStudentResults(studentExamId){
-    const res = await api.get("/student-exams/results", { params: { studentExamId } });
-    return res?.data?.data ?? res?.data;
+export async function getStudentResults(studentExamId, token) {
+  
+  try {
+    const res = await api.post(
+      "/student-exams/result",
+      { studentExamId: studentExamId },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    return res?.data?.data ;
+  } catch (error) {
+    console.error("getStudentResults error:", error.response?.data || error.message);
+    throw error;
+  }
 }
