@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { replace, useLocation, useNavigate, useParams } from "react-router-dom";
 import { listStudentExams, loadSingleExam, submitExam, finishExam } from "../api/studentExams";
 import Header from "../Layout/Header";
 
@@ -9,7 +9,7 @@ function SingleExam() {
   const token = localStorage.getItem("token");
   const { examId, questionIndex } = useParams();
 
-   const passedExam = location.state?.exam;
+  const passedExam = location.state?.exam;
 
   const [examData, setExamData] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -25,10 +25,19 @@ function SingleExam() {
   const formatTime = (totalSeconds) => {
     const pad = (n) => String(n).padStart(2, "0");
     if (totalSeconds <= 0) return "00:00";
-    const hrs = Math.floor(totalSeconds / 3600);
+
+    const days = Math.floor(totalSeconds / 86400);
+    const hrs = Math.floor((totalSeconds % 86400) / 3600);
     const mins = Math.floor((totalSeconds % 3600) / 60);
     const secs = totalSeconds % 60;
-    return hrs > 0 ? `${hrs}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)} min`;
+
+    let result = "";
+    if (days > 0) result += `${days} day${days > 1 ? "s" : ""} `;
+    if (hrs > 0) result += `${hrs} hour${hrs > 1 ? "s" : ""} `;
+    if (mins > 0) result += `${mins} min${mins > 1 ? "s" : ""} `;
+    if (secs > 0 && days === 0) result += `${secs} sec${secs > 1 ? "s" : ""}`;
+
+    return result.trim();
   };
 
   // Fetch exam data
@@ -42,10 +51,10 @@ function SingleExam() {
       setLoading(true);
 
       try {
-        let examToLoad = passedExam || { examId};
+        let examToLoad = passedExam || { examId };
 
         if (!examToLoad?.examId && examId) {
-        
+
           examToLoad = { examId };
         }
 
@@ -58,6 +67,11 @@ function SingleExam() {
         const data = await loadSingleExam({ examId: examToLoad.examId }, token);
         setExamData(data);
         setQuestions(data.questions || []);
+
+        const saved = localStorage.getItem(`answers_exam_${data.studentExamId}`);
+        if (saved) {
+          setSelectedAnswers(JSON.parse(saved));
+        }
 
         // Pre-fill previous answers
         const prevAnswers = {};
@@ -96,29 +110,56 @@ function SingleExam() {
     fetchExamData();
   }, [token, navigate, examId, questionIndex]);
 
-  // Countdown timer
- useEffect(() => {
-  if (!examData) return;
 
-  const timer = setInterval(() => {
-    setTimeLeft(prev => {
-      if (prev <= 1) {
-        clearInterval(timer);
-        alert("Time is over!....Auto submit the answers");
-        navigate("/results", { state: { studentExamId: examData.studentExamId } });
-        return 0;
-      }
-      return prev - 1;
-    });
-  }, 1000);
 
-  return () => clearInterval(timer);
-}, [examData, navigate]);
+  useEffect(() => {
+    if (!examData) return;
+
+
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        const newTime = prev - 1;
+
+        if (newTime <= 0) {
+          clearInterval(timer);
+          alert("Time is over! Auto-submitting the exam.");
+          navigate("/results", { state: { studentExamId: examData.studentExamId } });
+          return 0;
+        }
+
+        return newTime;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [examData, navigate]);
+
 
 
   const handleAnswerChange = (questionId, optionKey) => {
-    setSelectedAnswers({ ...selectedAnswers, [questionId]: optionKey });
+    setSelectedAnswers(prev => {
+      const updated = { ...prev, [questionId]: optionKey };
+      if (examData?.examId) {
+        localStorage.setItem(`answers_exam_${examData.studentExamId}`, JSON.stringify(updated));
+      }
+      return updated;
+    });
   };
+
+  useEffect(() => {
+    // Prevent back button
+    const handleBackButton = (event) => {
+      event.preventDefault();
+      window.history.pushState(null, "", window.location.href);
+    };
+
+    window.history.pushState(null, "", window.location.href);
+    window.addEventListener("popstate", handleBackButton);
+
+    return () => {
+      window.removeEventListener("popstate", handleBackButton);
+    };
+  }, []);
 
   const handleNext = async () => {
     const currentQuestion = questions[currentQuestionIndex];
@@ -128,11 +169,17 @@ function SingleExam() {
         await submitExam({ examId: examData.examId, questionId: currentQuestion.id, selectedOption }, token);
       }
 
+      console.log("check")
+
       const nextIndex = Math.min(currentQuestionIndex + 1, questions.length - 1);
       setCurrentQuestionIndex(nextIndex);
     } catch (err) {
-      console.error(err);
-      alert("Failed to submit answer. Try again.");
+      if (err.response?.status === 400 || err.response?.data?.message === "EXAM_HAS_ENDED_AUTOCOMPLETED") {
+        alert("Teacher ended the exam");
+        navigate("/results", { state: { studentExamId: examData.studentExamId } });
+      } else {
+        setError(err.response?.data?.message || err.message || "Failed to save exam");
+      }
     }
   };
 
@@ -148,8 +195,13 @@ function SingleExam() {
       const prevIndex = Math.max(currentQuestionIndex - 1, 0);
       setCurrentQuestionIndex(prevIndex);
     } catch (err) {
-      console.error(err);
-      alert("Failed to submit answer. Try again.");
+
+      if (err.response?.status === 400 || err.response?.data?.message === "EXAM_HAS_ENDED_AUTOCOMPLETED") {
+        alert("Teacher ended the exam");
+        navigate("/results", { state: { studentExamId: examData.studentExamId } });
+      } else {
+        setError(err.response?.data?.message || err.message || "Failed to save exam");
+      }
     }
   };
 
@@ -161,22 +213,26 @@ function SingleExam() {
       if (selectedOption) {
         await submitExam({ examId: examData.examId, questionId: currentQuestion.id, selectedOption }, token);
       }
-    
 
       alert("Exam saved as pending. Redirecting to exam list.");
-      navigate("/student");
+      navigate("/results", { state: { studentExamId: examData.studentExamId } });
     } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.message || "Failed to save exam");
+
+      if (err.response?.status === 400 || err.response?.data?.message === "EXAM_HAS_ENDED_AUTOCOMPLETED") {
+        alert("Teacher ended the exam");
+        navigate("/results", { state: { studentExamId: examData.studentExamId } });
+      } else {
+        setError(err.response?.data?.message || err.message || "Failed to save exam");
+      }
     }
   };
 
   const handleComplete = async () => {
-     const allAnswered = questions.every(q => selectedAnswers[q.id]);
-  if (!allAnswered) {
-    alert("You must answer all questions before completing the exam.");
-    return;
-  }
+    const allAnswered = questions.every(q => selectedAnswers[q.id]);
+    if (!allAnswered) {
+      alert("You must answer all questions before completing the exam.");
+      return;
+    }
 
     const currentQuestion = questions[currentQuestionIndex];
     const selectedOption = selectedAnswers[currentQuestion.id];
@@ -185,16 +241,20 @@ function SingleExam() {
       if (selectedOption) {
         await submitExam({ examId: examData.examId, questionId: currentQuestion.id, selectedOption }, token);
         await finishExam({ examId: examData.examId }, token);
+        localStorage.removeItem(`answers_exam_${examData.examId}`);
+
         alert("Exam completed! Redirecting to results.");
-        navigate("/results", { state: { studentExamId: examData.studentExamId } });
+        navigate("/results", { state: { studentExamId: examData.studentExamId } }, { replace: true });
       }
 
+    } catch (err) {
 
-
-
-} catch (err) {
-      console.error(err);
-      setError(err.response?.data?.message || "Failed to complete exam");
+      if (err.response?.status === 400 || err.response?.data?.message === "EXAM_HAS_ENDED_AUTOCOMPLETED") {
+        alert("Teacher ended the exam");
+        navigate("/results", { state: { studentExamId: examData.studentExamId } });
+      } else {
+        setError(err.response?.data?.message || err.message || "Failed to save exam");
+      }
     }
   };
 
@@ -210,8 +270,10 @@ function SingleExam() {
     { key: "D", value: currentQuestion.optionD },
   ].filter((opt) => opt.value);
 
-  const allQuestionsAnswered = questions.every((q) => selectedAnswers[q.id]);
+
   const isExamCompleted = examData?.status === "ATTENDED";
+  const allAnswered = questions.length > 0 && questions.every(q => selectedAnswers[q.id]);
+
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -223,7 +285,7 @@ function SingleExam() {
 
       <div className="max-w-2xl mx-auto mt-10 p-6 bg-white rounded shadow">
         <div className="mb-4">
-          <p className="font-medium">Q. {currentQuestion.questionText}</p>
+          <p className="font-medium">Q{currentQuestionIndex + 1}. {currentQuestion.questionText}</p>
         </div>
 
         <div className="border-2 border-gray-300 p-4 mb-6">
@@ -264,14 +326,14 @@ function SingleExam() {
       <div className="flex justify-end gap-5 max-w-2xl mx-auto px-6 py-5">
         <button
           onClick={handleSave}
-          disabled={allQuestionsAnswered}
+
           className="px-5 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-green-300"
         >
           Save
         </button>
         <button
           onClick={handleComplete}
-          disabled={isExamCompleted}
+          disabled={isExamCompleted || !allAnswered}
           className="px-5 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-blue-300"
         >
           Complete

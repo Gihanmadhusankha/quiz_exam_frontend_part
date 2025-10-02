@@ -60,10 +60,7 @@ function TeacherApp() {
     const q = searchTerm.trim();
     setPage(0);
     setActiveQuery(q);
-    
-
-
-  }
+    }
 
   function onInputKeyDown(e) {
     if (e.key === 'Enter') {
@@ -82,7 +79,7 @@ function TeacherApp() {
     if (exam.status?.toLowerCase() === 'draft') {
       navigate(`/addExam/${id}`);
     }
-    if (exam.status?.toLowerCase() == "published") {
+    if (exam.status?.toLowerCase() == "published" || exam.status?.toLowerCase() == "ended") {
       navigate(`/monitorExam/${id}`);
     }
   }
@@ -162,7 +159,7 @@ function TeacherApp() {
                         day: '2-digit',
                         hour: '2-digit',
                         minute: '2-digit',
-                        hour12: false, // 24-hour format
+                        hour12: false, 
                       }).replace(',', '')
                       : '—'}
                   </td>

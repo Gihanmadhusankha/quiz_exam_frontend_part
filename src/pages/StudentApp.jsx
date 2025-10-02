@@ -78,56 +78,50 @@ function StudentApp() {
 
     try {
       // If attended, fetch results
-      if (exam.status === 'ATTENDED') {
-         if (!exam.studentExamId) {
-        alert("Student exam record not found");
-        return;
-      }
-        
+      if (exam.status === 'ATTENDED' || exam.status ==='ENDED') {
+        if (!exam.studentExamId) {
+          alert("Student exam record not found");
+          return;
+        }
+
         const results = await getStudentResults(exam.studentExamId, token);
         if (!results || Object.keys(results).length === 0) {
-      alert("Result not available yet. Please try again later.");
-      return;
-    }
-        navigate('/results', { state: { studentExamId: exam.studentExamId, results } });
+          alert("Result not available yet. Please try again later.");
+          return;
+        }
+        navigate('/results', { state: { studentExamId: exam.studentExamId, results } },{replace:true});
         return;
       }
-     
-      
-    
-    
 
       // If pending or new, load exam to find first unanswered
       const res = await loadSingleExam({ examId: exam.examId }, token);
       const examData = res?.data || res;
 
-     
-
       //Determine starting question
       let startIndex = 0;
 
-    if (examData.status === 'NEW') {
-      startIndex = 0;
-    } else if (examData.status === 'PENDING') {
-      const lastId=examData.lastAnsweredQuestionId;
-      if(lastId){
-       const lastIndex = examData.questions.findIndex(q => q.id === lastId);
-        startIndex = lastIndex !== -1 ? Math.min(lastIndex + 1, examData.questions.length - 1) : 0;
-      } else {
+      if (examData.status === 'NEW') {
         startIndex = 0;
+      } else if (examData.status === 'PENDING') {
+        const lastId = examData.lastAnsweredQuestionId;
+        if (lastId) {
+          const lastIndex = examData.questions.findIndex(q => q.id === lastId);
+          startIndex = lastIndex !== -1 ? Math.min(lastIndex + 1, examData.questions.length - 1) : 0;
+        } else {
+          startIndex = 0;
+        }
       }
+
+      navigate(`/singleExam/${examData.examId}`, {
+        state: { exam: examData },
+      });
+    } catch (err) {
+      console.error('Error handling exam click:', err);
+      alert('Failed to load exam. Try again.');
     }
-
-    navigate(`/singleExam/${examData.examId}`, {
-      state: { exam: examData },
-    });
-  } catch (err) {
-    console.error('Error handling exam click:', err);
-    alert('Failed to load exam. Try again.');
   }
-}
 
-  
+
   function findKey(exam, keys) {
     for (const k of keys) {
       if (!exam) break;
@@ -146,11 +140,46 @@ function StudentApp() {
     return isNaN(parsed.getTime()) ? raw : parsed.toLocaleString();
   }
 
-  function formatDuration(exam) {
-    const raw = findKey(exam, ['ExamDuration', 'duration', 'examDuration', 'time']);
-    if (!raw) return '—';
-    return typeof raw === 'number' ? `${raw} min` : raw.toString();
+ function formatDuration(exam) {
+  const raw = findKey(exam, ['ExamDuration', 'duration', 'examDuration', 'time']);
+  if (!raw) return '—';
+
+  
+  if (typeof raw === 'number') {
+    let totalMinutes = raw;
+    const days = Math.floor(totalMinutes / (24 * 60));
+    totalMinutes %= 24 * 60;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    let result = '';
+    if (days > 0) result += `${days} day${days > 1 ? 's' : ''} `;
+    if (hours > 0) result += `${hours} hour${hours > 1 ? 's' : ''} `;
+    if (minutes > 0) result += `${minutes} min`;
+
+    return result.trim();
   }
+
+  
+  const match = raw.match(/(\d+)h\s*(\d+)min/);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+
+    const days = Math.floor(hours / 24);
+    hours = hours % 24;
+
+    let result = '';
+    if (days > 0) result += `${days} day${days > 1 ? 's' : ''} `;
+    if (hours > 0) result += `${hours} hour${hours > 1 ? 's' : ''} `;
+    if (minutes > 0) result += `${minutes} min`;
+
+    return result.trim();
+  }
+
+  return raw.toString();
+}
+
 
   const filteredExams = activeQuery
     ? exams.filter((ex) => (ex.title || '').toLowerCase().includes(activeQuery.toLowerCase()))

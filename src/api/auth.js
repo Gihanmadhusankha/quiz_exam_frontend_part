@@ -6,7 +6,7 @@ export async function loginRequest(credentials) {
         // Return whichever payload the backend uses:
         return res?.data?.data ?? res?.data;
     } catch (err) {
-        // Normalize common axios errors so caller can read a message easily
+        
         if (err?.response?.data) {
             const message = err.response.data.message ?? err.response.data;
             const e = new Error(typeof message === "string" ? message : JSON.stringify(message));
@@ -16,3 +16,21 @@ export async function loginRequest(credentials) {
         throw err;
     }
 };
+
+export async function logOut(token){
+    try{
+        const res=await api.post(
+            "/auth/logout",
+            {},
+            {
+               headers:{
+                Authorization:`Bearer${token}`,
+               },
+            }
+        );
+        return res?.data?.data;
+    }catch(error){
+        console.error("logout error:",error.response?.data||error.message);
+        throw error;
+    }
+}

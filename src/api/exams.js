@@ -37,9 +37,9 @@ export async function manageExam(req) {
 export async function publishExam(examId) {
   try {
     const payload = typeof examId === 'object' && examId !== null ? examId : { examId };
-    console.log('publishExam request:', payload);
+  
     const res = await api.post("/exams/publish", payload);
-    console.log('publishExam response:', res.data);
+    
     return res?.data?.data ?? res?.data;
   } catch (error) {
     console.error('Error publishing exam:', {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import { loginRequest } from '../api/auth';
 import Header from '../Layout/Header';
@@ -8,7 +8,21 @@ function Login() {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const token = localStorage.getItem("token");
+    const role = localStorage.getItem("role");
+
     const navigate = useNavigate();
+
+    useEffect(() => {
+        if (token && role) {
+            if(role === "TEACHER"){
+                navigate("/teacher");
+            }else{
+                navigate("/student");
+            }
+            return;
+        }
+    },[])
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -23,7 +37,7 @@ function Login() {
             setLoading(true);
             const data = await loginRequest({ email, password });
 
-            // Destructure correctly from backend response
+
             const { token, role, userId, name } = data;
 
             if (!token) {

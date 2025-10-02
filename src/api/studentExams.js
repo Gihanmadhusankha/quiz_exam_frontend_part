@@ -5,7 +5,7 @@ export async function loadSingleExam({ examId }, token) {
   try {
     const res = await api.post(
       "/student-exams/start",
-      { examId }, // payload
+      { examId },
       {
         headers: {
           Authorization: `Bearer ${token}`,

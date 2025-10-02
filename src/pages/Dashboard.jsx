@@ -1,17 +1,16 @@
 import React, { useEffect, useState } from 'react'
 import { getTeacherDashboard } from '../api/dashboard';
 import Header from '../Layout/Header'
-import {
-    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
-} from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell} from "recharts";
 import dayjs from "dayjs";
 import {motion} from 'framer-motion'
+import { useNavigate } from 'react-router-dom';
 function Dashboard() {
     const [dashboardData, setDashboardData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const COLORS = ["#0088FE", "#FFBB28", "#FF8042", "#FF1010", "#00C49F"];
-
+    const navigate=useNavigate();
     useEffect(() => {
         const fetchData = async () => {
             try {
@@ -32,7 +31,16 @@ function Dashboard() {
         <div className='min-h-screen bg-gray-100'>
             <Header />
             <div className="max-w-6xl mx-auto p-6">
+                <div className='flex '>
+                  <button
+            onClick={() => navigate(-1)}
+            className=" mr-5 px-1 py-1 bg-gray-400 text-white rounded hover:bg-gray-600"
+          >
+            ← Back
+
+          </button>
             <h1 className="text-lg font-semibold">Dashboard</h1>
+            </div>
     
             <div className="p-6 grid grid-cols-2 gap-6">
                 {/*Line Chart*/}
